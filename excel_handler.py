@@ -86,6 +86,7 @@ class ExcelHandler:
         if not src.exists():
             return True
 
+        # Якщо заявка відхилена - переміщуємо у папку відхилених
         if not approved:
             dest_folder = config.get_path("rejected_folder")
             if not dest_folder:
@@ -97,55 +98,108 @@ class ExcelHandler:
                 dest_path = dest_path.parent / f"{src.stem}_{ts}{src.suffix}"
             return self._safe_move(src, dest_path)
 
+        # Читаємо дані з файлу
         try:
             wb = load_workbook(str(src), data_only=True, read_only=True)
             status = wb["Налаштування"]["B8"].value
             payment_raw = str(wb["Бланк"]["C3"].value or "").strip().upper()
             wb.close()
-        except:
+        except Exception as e:
+            print(f"❌ Помилка читання файлу при переміщенні: {e}")
             return False
 
-        if status == "Director_confirm_form":
-            dest_folder = config.get_path("director_folder")
-        elif status in ("Financial_namager_confirm_form", "Empty_form"):
+        # Визначаємо поточну папку файлу
+        current_folder = src.parent.resolve()
+        
+        # Отримуємо шляхи до всіх папок
+        findirector_folder = config.get_path("findirector_folder")
+        director_folder = config.get_path("director_folder")
+        
+        if not findirector_folder or not director_folder:
+            print("❌ Папки не налаштовані")
+            return False
+            
+        findirector_path = Path(findirector_folder).resolve()
+        director_path = Path(director_folder).resolve()
+        
+        print(f"📍 Поточна папка: {current_folder}")
+        print(f"📋 Статус у файлі: {status}")
+        print(f"💳 Вид розрахунку: {payment_raw}")
+        
+        # КЛЮЧОВА ЛОГІКА: визначаємо наступну папку на основі ПОТОЧНОГО місця
+        if current_folder == findirector_path:
+            # Файл у папці Фіндиректора → завжди йде до Директора
+            dest_folder = director_folder
+            print(f"➡️ Маршрут: Фіндиректор → Директор")
+            
+        elif current_folder == director_path:
+            # Файл у папці Директора → йде до Бухгалтера або Касира
             if any(kw in payment_raw for kw in ["БЕЗГОТІВКА", "КАРТА", "КАРТКА"]):
                 dest_folder = config.get_path("accountant_folder")
+                print(f"➡️ Маршрут: Директор → Бухгалтер (безготівка)")
             else:
                 dest_folder = config.get_path("cashier_folder")
+                print(f"➡️ Маршрут: Директор → Касир (готівка)")
         else:
-            return False
+            # Файл у невідомій папці - використовуємо стару логіку за статусом
+            print(f"⚠️ Файл у невідомій папці, використовуємо логіку за статусом")
+            if status == "Director_confirm_form":
+                dest_folder = director_folder
+            elif status in ("Financial_namager_confirm_form", "Empty_form"):
+                if any(kw in payment_raw for kw in ["БЕЗГОТІВКА", "КАРТА", "КАРТКА"]):
+                    dest_folder = config.get_path("accountant_folder")
+                else:
+                    dest_folder = config.get_path("cashier_folder")
+            else:
+                print(f"❌ Невідомий статус: {status}")
+                return False
 
         if not dest_folder:
+            print("❌ Цільова папка не налаштована")
             return False
 
         dest_path = Path(dest_folder) / src.name
+        
+        # Перевірка: якщо файл вже у цільовій папці - не переміщуємо
+        if dest_path.resolve() == src.resolve():
+            print(f"⚠️ Файл вже у цільовій папці: {src.name}")
+            return True
+        
+        print(f"🎯 Цільова папка: {dest_path.parent}")
+        
         dest_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Якщо файл з такою назвою вже існує у цільовій папці
         if dest_path.exists():
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             dest_path = dest_path.parent / f"{src.stem}_{ts}{src.suffix}"
+            print(f"⚠️ Файл існує, додано timestamp: {dest_path.name}")
 
         return self._safe_move(src, dest_path)
 
     def _safe_move(self, src: Path, dst: Path) -> bool:
         try:
+            # Спочатку копіюємо файл
             shutil.copy2(str(src), str(dst))
-            print(f"Скопійовано → {dst.parent.name}/{dst.name}")
+            print(f"✅ Скопійовано → {dst.parent.name}/{dst.name}")
 
+            # Намагаємося видалити оригінал
             for attempt in range(10):
                 try:
                     src.unlink()
-                    print(f"Оригінал видалено")
+                    print(f"🗑️ Оригінал видалено")
                     return True
                 except PermissionError:
                     time.sleep(1)
                 except FileNotFoundError:
+                    # Файл вже видалено
                     return True
 
-            print("Оригінал залишено (відкритий у Excel), але копія створена")
+            print("⚠️ Оригінал залишено (відкритий у Excel), але копія створена")
             return True
 
         except Exception as e:
-            print(f"Критична помилка переміщення: {e}")
+            print(f"❌ Критична помилка переміщення: {e}")
             return False
 
     def validate_file(self, file_path):
