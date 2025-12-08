@@ -1,4 +1,3 @@
-# config.py
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -16,8 +15,8 @@ def parse_chat_id(value):
     except:
         return None
 
+CHAT_ID_DIRECTOR = parse_chat_id(os.getenv("CHAT_ID_DIRECTOR"))
 CHAT_ID_FINDIRECTOR = parse_chat_id(os.getenv("CHAT_ID_FINDIRECTOR"))
-CHAT_ID_DIRECTOR    = parse_chat_id(os.getenv("CHAT_ID_DIRECTOR"))
 
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "10"))
 FILE_SETTLE_TIME = int(os.getenv("FILE_SETTLE_TIME", "5"))
@@ -25,8 +24,8 @@ FILE_SETTLE_TIME = int(os.getenv("FILE_SETTLE_TIME", "5"))
 _db = Database()
 
 DEFAULT_PATHS = {
-    "findirector_folder": r"C:\Users\Yevhen\OneDrive\Документы\Облік замовлень\Фін директор",
     "director_folder":    r"C:\Users\Yevhen\OneDrive\Документы\Облік замовлень\Директор",
+    "findirector_folder": r"C:\Users\Yevhen\OneDrive\Документы\Облік замовлень\Фін директор",
     "accountant_folder":  r"C:\Users\Yevhen\OneDrive\Документы\Облік замовлень\Бухгалтер",
     "cashier_folder":     r"C:\Users\Yevhen\OneDrive\Документы\Облік замовлень\Касир",
     "rejected_folder":    r"C:\Users\Yevhen\OneDrive\Документы\Облік замовлень\Відхилені",
