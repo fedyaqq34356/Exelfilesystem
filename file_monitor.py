@@ -1,4 +1,3 @@
-# file_monitor.py
 import time
 from pathlib import Path
 from datetime import datetime
@@ -7,30 +6,24 @@ from database import Database
 from excel_handler import ExcelHandler
 
 class FileMonitor:
-
     
     def __init__(self):
         self.db = Database()
         self.excel = ExcelHandler()
         self.last_check = datetime.now()
-        
-
         self.pending_files = {}
 
     def check_folders(self):
-
         new_apps = []
         
-
         folders = {
-            "ФІНДИРЕКТОР": config.get_path("findirector_folder"),
-            "ДИРЕКТОР": config.get_path("director_folder")
+            "ДИРЕКТОР": config.get_path("director_folder"),
+            "ФІНДИРЕКТОР": config.get_path("findirector_folder")
         }
 
         current_time = time.time()
 
         for approver, folder in folders.items():
-
             if not folder:
                 continue
             
@@ -39,60 +32,42 @@ class FileMonitor:
                 print(f"⚠️ Папка не існує: {folder}")
                 continue
 
-
             for pattern in ["*.xlsm", "*.xlsx"]:
                 for file in folder_path.glob(pattern):
                     fp = str(file.resolve())
 
-
                     if self.excel.is_file_locked(fp):
-
                         continue
-
 
                     if self.db.is_file_processed(fp):
-
                         self.pending_files.pop(fp, None)
                         continue
-
 
                     if fp not in self.pending_files:
                         print(f"🔍 Виявлено новий файл: {file.name} [{approver}]")
                         self.pending_files[fp] = current_time
                         continue
 
-
                     time_since_first_seen = current_time - self.pending_files[fp]
                     
                     if time_since_first_seen < config.FILE_SETTLE_TIME:
-
                         continue
-
 
                     print(f"📄 Обробка файлу: {file.name} [{approver}]")
                     
-
                     valid, error = self.excel.validate_file(fp)
                     if not valid:
                         print(f"❌ Файл не валідний: {error}")
-
                         self.pending_files.pop(fp, None)
                         continue
-
 
                     data = self.excel.read_application(fp)
                     
                     if data:
-
                         data["intended_approver"] = approver
-                        
-
                         new_apps.append(data)
-                        
-
                         self.db.add_processed_file(fp, approver)
                         
-
                         self.db.log_action(
                             data["file_name"], 
                             "DETECTED", 
@@ -104,19 +79,14 @@ class FileMonitor:
                     else:
                         print(f"⚠️ Не вдалося прочитати файл: {file.name}")
                     
-
                     self.pending_files.pop(fp, None)
 
-
         self._cleanup_pending_files()
-
-
         self.last_check = datetime.now()
 
         return new_apps
 
     def _cleanup_pending_files(self):
-
         files_to_remove = []
         
         for fp in self.pending_files.keys():
@@ -128,28 +98,24 @@ class FileMonitor:
             self.pending_files.pop(fp, None)
 
     def get_monitoring_stats(self):
-
         stats = {
             "last_check": self.last_check.strftime("%H:%M:%S"),
             "pending_files": len(self.pending_files),
             "folders": {}
         }
         
-
         for key, path in config.PATHS.items():
             if key.endswith("_folder") and path:
                 folder_path = Path(path)
                 exists = folder_path.exists()
                 
                 if exists:
-
                     xlsm_count = len(list(folder_path.glob("*.xlsm")))
                     xlsx_count = len(list(folder_path.glob("*.xlsx")))
                     total_count = xlsm_count + xlsx_count
                 else:
                     total_count = 0
                 
-
                 folder_name = key.replace("_folder", "").replace("_", " ").title()
                 
                 stats["folders"][folder_name] = {
@@ -161,22 +127,13 @@ class FileMonitor:
         return stats
 
     def force_check_file(self, file_path):
-
         fp = str(Path(file_path).resolve())
-        
-
         self.pending_files.pop(fp, None)
-        
-
-        
         print(f"🔄 Примусова перевірка: {Path(fp).name}")
-        
-
         data = self.excel.read_application(fp)
         return data
 
     def get_pending_files_info(self):
-
         info = []
         current_time = time.time()
         
