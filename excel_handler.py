@@ -9,8 +9,8 @@ import time
 class ExcelHandler:
 
     STATUS_MAP = {
-        "Director_confirm_form": "ФІНДИРЕКТОР",
-        "Financial_namager_confirm_form": "ДИРЕКТОР",
+        "Director_confirm_form": "ДИРЕКТОР",
+        "Financial_namager_confirm_form": "ФІНДИРЕКТОР",
         "Empty_form": "ДИРЕКТОР",
     }
 
@@ -84,12 +84,13 @@ class ExcelHandler:
         src = Path(file_path)
         
         if not src.exists():
+            print(f"⚠️ Файл не існує: {src.name}")
             return True
 
-    
         if not approved:
             dest_folder = config.get_path("rejected_folder")
             if not dest_folder:
+                print("❌ Папка для відхилених не налаштована")
                 return False
             dest_path = Path(dest_folder) / src.name
             dest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -97,7 +98,6 @@ class ExcelHandler:
                 ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                 dest_path = dest_path.parent / f"{src.stem}_{ts}{src.suffix}"
             return self._safe_move(src, dest_path)
-
 
         try:
             wb = load_workbook(str(src), data_only=True, read_only=True)
@@ -108,41 +108,37 @@ class ExcelHandler:
             print(f"❌ Помилка читання файлу при переміщенні: {e}")
             return False
 
-
         current_folder = src.parent.resolve()
     
-        findirector_folder = config.get_path("findirector_folder")
         director_folder = config.get_path("director_folder")
+        findirector_folder = config.get_path("findirector_folder")
         
-        if not findirector_folder or not director_folder:
+        if not director_folder or not findirector_folder:
             print("❌ Папки не налаштовані")
             return False
             
-        findirector_path = Path(findirector_folder).resolve()
         director_path = Path(director_folder).resolve()
+        findirector_path = Path(findirector_folder).resolve()
         
         print(f"📍 Поточна папка: {current_folder}")
         print(f"📋 Статус у файлі: {status}")
         print(f"💳 Вид розрахунку: {payment_raw}")
         
-    
-        if current_folder == findirector_path:
-            dest_folder = director_folder
-            print(f"➡️ Маршрут: Фіндиректор → Директор")
+        if current_folder == director_path:
+            dest_folder = findirector_folder
+            print(f"➡️ Маршрут: Директор → Фіндиректор")
             
-        elif current_folder == director_path:
-    
+        elif current_folder == findirector_path:
             if any(kw in payment_raw for kw in ["БЕЗГОТІВКА", "КАРТА", "КАРТКА"]):
                 dest_folder = config.get_path("accountant_folder")
-                print(f"➡️ Маршрут: Директор → Бухгалтер (безготівка)")
+                print(f"➡️ Маршрут: Фіндиректор → Бухгалтер (безготівка)")
             else:
                 dest_folder = config.get_path("cashier_folder")
-                print(f"➡️ Маршрут: Директор → Касир (готівка)")
+                print(f"➡️ Маршрут: Фіндиректор → Касир (готівка)")
         else:
-
             print(f"⚠️ Файл у невідомій папці, використовуємо логіку за статусом")
             if status == "Director_confirm_form":
-                dest_folder = director_folder
+                dest_folder = findirector_folder
             elif status in ("Financial_namager_confirm_form", "Empty_form"):
                 if any(kw in payment_raw for kw in ["БЕЗГОТІВКА", "КАРТА", "КАРТКА"]):
                     dest_folder = config.get_path("accountant_folder")
@@ -166,7 +162,6 @@ class ExcelHandler:
         
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         
-    
         if dest_path.exists():
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             dest_path = dest_path.parent / f"{src.stem}_{ts}{src.suffix}"
@@ -176,27 +171,57 @@ class ExcelHandler:
 
     def _safe_move(self, src: Path, dst: Path) -> bool:
         try:
-            
             shutil.copy2(str(src), str(dst))
             print(f"✅ Скопійовано → {dst.parent.name}/{dst.name}")
 
-    
-            for attempt in range(10):
+            if not dst.exists():
+                print(f"❌ Копія не створена!")
+                return False
+
+            max_attempts = 20
+            
+            for attempt in range(max_attempts):
                 try:
                     src.unlink()
-                    print(f"🗑️ Оригінал видалено")
+                    print(f"🗑️ Оригінал видалено після {attempt + 1} спроби")
                     return True
+                    
                 except PermissionError:
-                    time.sleep(1)
+                    if attempt < max_attempts - 1:
+                        time.sleep(0.5)
+                    else:
+                        import gc
+                        gc.collect()
+                        time.sleep(1)
+                        try:
+                            src.unlink()
+                            print(f"🗑️ Оригінал видалено після форсованого gc")
+                            return True
+                        except:
+                            pass
+                            
                 except FileNotFoundError:
-    
+                    print(f"✅ Файл вже було видалено")
                     return True
+                    
+                except Exception as e:
+                    print(f"⚠️ Непередбачена помилка при видаленні: {e}")
+                    break
 
-            print("⚠️ Оригінал залишено (відкритий у Excel), але копія створена")
+            print(f"⚠️ УВАГА: Файл скопійовано успішно, але оригінал залишився!")
+            print(f"   Можливо файл відкритий в Excel: {src.name}")
+            print(f"   Закрийте файл і видаліть вручну або перезапустіть бота")
+            
             return True
 
         except Exception as e:
             print(f"❌ Критична помилка переміщення: {e}")
+            if dst.exists():
+                try:
+                    dst.unlink()
+                    print(f"🗑️ Видалено некоректну копію")
+                except:
+                    pass
             return False
 
     def validate_file(self, file_path):
@@ -222,4 +247,3 @@ class ExcelHandler:
                     wb.close()
                 except:
                     pass
-
